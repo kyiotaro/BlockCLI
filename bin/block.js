@@ -91,7 +91,7 @@ program
     console.log(C.cyan('  Updating BlockCLI...'));
     console.log('');
     try {
-      execSync('npm install -g kyiotaro/BlockCLI', { stdio: 'inherit' });
+      execSync('npm install -g kyiotaro/BlockCLI --force', { stdio: 'inherit' });
       console.log('');
       console.log(C.green('  ✓  BlockCLI updated successfully!'));
       console.log('');
