@@ -143,13 +143,20 @@ async function startBlock(appQuery, timeStr) {
   // Save session before spawning daemon
   saveSession(session);
 
-  // 6. Spawn background daemon (detached, independent)
+  // 6. Spawn background daemon using wscript to suppress any window on Windows
   const daemonPath = path.join(__dirname, 'daemon.js');
-  const daemon = spawn(process.execPath, [daemonPath], {
+  const vbsScript = `
+Set WshShell = CreateObject("WScript.Shell")
+WshShell.Run "node """ & "${daemonPath.replace(/\\/g, '\\\\')}" & """", 0, False
+`.trim();
+
+  const vbsPath = path.join(require('os').homedir(), '.focusblock', 'run-daemon.vbs');
+  require('fs').writeFileSync(vbsPath, vbsScript);
+
+  const daemon = spawn('wscript.exe', [vbsPath], {
     detached: true,
     stdio: 'ignore',
     windowsHide: true,
-    windowsVerbatimArguments: false,
     shell: false
   });
   daemon.unref();
