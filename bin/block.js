@@ -2,17 +2,47 @@
 // bin/block.js
 // Main CLI entry point
 
-// Compatibility shim for chalk v4 (CommonJS)
 process.env.FORCE_COLOR = '1';
 
+const https = require('https');
 const { program } = require('commander');
 const { startBlock } = require('../src/block');
 const { loadSession } = require('../src/session');
 const { printHelp, printError, printStatus, logo, C } = require('../src/ui');
 
+// === UPDATE CHECKER ===
+const currentVersion = require('../package.json').version;
+
+function checkForUpdates() {
+  const options = {
+    hostname: 'raw.githubusercontent.com',
+    path: '/kyiotaro/BlockCLI/main/package.json',
+    timeout: 3000,
+    headers: { 'User-Agent': 'BlockCLI' }
+  };
+
+  https.get(options, (res) => {
+    let data = '';
+    res.on('data', chunk => data += chunk);
+    res.on('end', () => {
+      try {
+        const latest = JSON.parse(data).version;
+        if (latest && latest !== currentVersion) {
+          console.log('');
+          console.log(C.yellow(`  ↑  Update available: v${currentVersion} → v${latest}`));
+          console.log(C.dim('     Run: block update'));
+          console.log('');
+        }
+      } catch { /* silent */ }
+    });
+  }).on('error', () => { /* silent - no internet, skip */ });
+}
+
+checkForUpdates();
+
 program
   .name('block')
-  .version('1.0.0')
+  .version(currentVersion)
   .description('Block distracting apps while you study.')
   .helpOption(false)
   .allowUnknownOption(true);
@@ -25,7 +55,7 @@ program
     const session = loadSession();
     if (!session) {
       logo();
-      console.log(C.green('  ✓  No active session. You\'re free.\n'));
+      console.log(C.green("  ✓  No active session. You're free.\n"));
     } else {
       printStatus(session);
     }
@@ -51,14 +81,31 @@ program
     }
   });
 
+// === COMMAND: block update ===
+program
+  .command('update')
+  .description('Update BlockCLI to the latest version')
+  .action(() => {
+    const { execSync } = require('child_process');
+    console.log('');
+    console.log(C.cyan('  Updating BlockCLI...'));
+    console.log('');
+    try {
+      execSync('npm install -g kyiotaro/BlockCLI', { stdio: 'inherit' });
+      console.log('');
+      console.log(C.green('  ✓  BlockCLI updated successfully!'));
+      console.log('');
+    } catch {
+      printError('Update failed. Try running manually:\n\n  npm install -g kyiotaro/BlockCLI');
+    }
+  });
+
 // === COMMAND: block help ===
 program
   .command('help')
   .description('Show help')
   .action(() => printHelp());
 
-// === DEFAULT: block <app> <time> ===
-// Parse positional args manually if no subcommand matched
 program
   .command('*', { isDefault: true, hidden: true })
   .allowUnknownOption(true)
@@ -66,14 +113,12 @@ program
 
 program.parse(process.argv);
 
-// Handle positional: block <app> <time>
 const args = process.argv.slice(2);
-const knownCommands = ['status', 'list', 'help', '--version', '-V', '--help', '-h'];
+const knownCommands = ['status', 'list', 'help', 'update', '--version', '-V', '--help', '-h'];
 
 if (args.length === 0) {
   printHelp();
 } else if (!knownCommands.includes(args[0])) {
-  // Treat as: block <app> <duration>
   if (args.length < 2) {
     printError(
       `Missing duration.\n\n` +
