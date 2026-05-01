@@ -86,8 +86,8 @@ For certain apps (especially games), run your terminal as **Administrator**:
 
 ## Notes
 
-- Active session is saved to `C:\Users\<name>\.focusblock\session.json`
-- Daemon logs are at `C:\Users\<name>\.focusblock\daemon.log`
+- Active session is saved to `C:\Users\<name>\.blockcli\session.json`
+- Daemon logs are at `C:\Users\<name>\.blockcli\daemon.log`
 - If you restart your PC mid-session, the daemon stops but the timer keeps counting down
 
 ---
