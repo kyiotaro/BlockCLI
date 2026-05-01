@@ -16,12 +16,39 @@ const {
   printScanDone
 } = require('./ui');
 
+const { execSync } = require('child_process');
+
+/**
+ * Check if running as Administrator on Windows
+ */
+function isAdmin() {
+  try {
+    execSync('net session', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Start a block session
  * @param {string} appQuery - app name from command line (can be partial)
  * @param {string} timeStr - time string like "1.20.00"
  */
 async function startBlock(appQuery, timeStr) {
+  // 0. Check administrator privileges
+  if (!isAdmin()) {
+    printError(
+      'BlockCLI requires Administrator privileges to kill processes.\n\n' +
+      `  ${C.white('How to fix:')}\n` +
+      `    1. Close this terminal\n` +
+      `    2. Search for "PowerShell" or "Command Prompt" in Start Menu\n` +
+      `    3. Right-click → ${C.yellow('"Run as administrator"')}\n` +
+      `    4. Run your command again`
+    );
+    process.exit(1);
+  }
+
   // 1. Parse duration first
   const durationSeconds = parseTime(timeStr);
   if (!durationSeconds || durationSeconds < 10) {
@@ -121,7 +148,9 @@ async function startBlock(appQuery, timeStr) {
   const daemon = spawn(process.execPath, [daemonPath], {
     detached: true,
     stdio: 'ignore',
-    windowsHide: true
+    windowsHide: true,
+    windowsVerbatimArguments: false,
+    shell: false
   });
   daemon.unref();
 
