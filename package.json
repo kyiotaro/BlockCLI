@@ -1,0 +1,24 @@
+{
+  "name": "focusblock",
+  "version": "1.0.0",
+  "description": "Block distracting apps while you study. No escape until the timer runs out.",
+  "main": "src/index.js",
+  "bin": {
+    "block": "./bin/block.js"
+  },
+  "scripts": {
+    "start": "node bin/block.js"
+  },
+  "keywords": ["focus", "block", "productivity", "cli", "windows"],
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "inquirer": "^8.2.6",
+    "cli-progress": "^3.12.0",
+    "node-schedule": "^2.1.1",
+    "conf": "^10.2.0",
+    "figures": "^3.2.0",
+    "boxen": "^5.1.2"
+  }
+}
