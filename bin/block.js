@@ -30,7 +30,7 @@ function checkForUpdates() {
         if (latest && latest !== currentVersion) {
           console.log('');
           console.log(C.yellow(`  ↑  Update available: v${currentVersion} → v${latest}`));
-          console.log(C.dim('     Run: npm install -g kyiotaro/BlockCLI'));
+          console.log(C.dim('     Run: block update'));
           console.log('');
         }
       } catch { /* silent */ }
