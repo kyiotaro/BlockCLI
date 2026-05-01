@@ -129,7 +129,20 @@ async function startBlock(appQuery, timeStr) {
     selectedApp = answer.app;
   }
 
-  // 5. Confirm & start session
+  // 5. Try to find exe path so daemon can rename it immediately
+  const { findExePath } = require("./scanner");
+  if (!selectedApp.exePath) {
+    process.stdout.write(C.dim("  Locating exe path..."));
+    const found = findExePath(selectedApp.processName);
+    if (found) {
+      selectedApp.exePath = found;
+      process.stdout.write(" " + C.green("found") + "\n\n");
+    } else {
+      process.stdout.write(" " + C.dim("not found, will use kill fallback") + "\n\n");
+    }
+  }
+
+  // 6. Confirm & start session
   const endTime = getEndTime(durationSeconds);
   const startTime = Date.now();
 
@@ -150,7 +163,7 @@ Set WshShell = CreateObject("WScript.Shell")
 WshShell.Run "node """ & "${daemonPath.replace(/\\/g, '\\\\')}" & """", 0, False
 `.trim();
 
-  const vbsPath = path.join(require('os').homedir(), '.focusblock', 'run-daemon.vbs');
+  const vbsPath = path.join(require('os').homedir(), '.blockcli', 'run-daemon.vbs');
   require('fs').writeFileSync(vbsPath, vbsScript);
 
   const daemon = spawn('wscript.exe', [vbsPath], {

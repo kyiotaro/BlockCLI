@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const SESSION_DIR = path.join(os.homedir(), '.focusblock');
+const SESSION_DIR = path.join(os.homedir(), '.blockcli');
 const SESSION_FILE = path.join(SESSION_DIR, 'session.json');
 
 function ensureDir() {

@@ -25,7 +25,7 @@ function logo() {
   console.log(C.yellow.bold('  ██╔══██╗██║     ██║   ██║██║     ██╔═██╗ '));
   console.log(C.yellow.bold('  ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗'));
   console.log(C.dim('  ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝'));
-  console.log(C.dim('                              BLOCK  CLI  v1.0.2'));
+  console.log(C.dim('                              BLOCK  CLI  v1.0.4'));
   console.log('');
 }
 

@@ -1,6 +1,6 @@
 {
-  "name": "focusblock",
-  "version": "1.0.0",
+  "name": "blockcli",
+  "version": "1.0.4",
   "description": "Block distracting apps while you study. No escape until the timer runs out.",
   "main": "src/index.js",
   "bin": {
@@ -9,7 +9,13 @@
   "scripts": {
     "start": "node bin/block.js"
   },
-  "keywords": ["focus", "block", "productivity", "cli", "windows"],
+  "keywords": [
+    "focus",
+    "block",
+    "productivity",
+    "cli",
+    "windows"
+  ],
   "license": "MIT",
   "dependencies": {
     "chalk": "^4.1.2",
