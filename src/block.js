@@ -181,13 +181,13 @@ function startSpinner(message) {
  * Ask user to confirm the detected process
  */
 async function confirmProcess(proc) {
-  console.log(`\n  ${C.green('✓')}  Terdeteksi: ${C.white.bold(proc.processName)} ${proc.exePath ? C.dim('→ ' + proc.exePath) : ''}\n`);
+  console.log(`\n  ${C.green('✓')}  Detected: ${C.white.bold(proc.processName)} ${proc.exePath ? C.dim('→ ' + proc.exePath) : ''}\n`);
 
   const answer = await inquirer.prompt([
     {
       type: 'confirm',
       name: 'ok',
-      message: `  ${C.white('Block app ini?')}`,
+      message: `  ${C.white('Block this app?')}`,
       default: true,
       prefix: ' '
     }
@@ -237,26 +237,26 @@ async function startBlock(appQuery, timeStr) {
     process.exit(1);
   }
 
-  // 3. Cek apakah app sudah running sebelum command dijalankan
+  // 3. Check if the app is already running before the command was run
   console.log('');
-  process.stdout.write(`  ${C.dim('Mencari proses yang cocok...')}`);
+  process.stdout.write(`  ${C.dim('Scanning for matching process...')}`);
   const alreadyRunning = findAlreadyRunning(appQuery);
 
   let detectedProc;
 
   if (alreadyRunning) {
-    // App sudah buka — langsung deteksi
-    process.stdout.write(` ${C.green('ditemukan!')}\n`);
+    // App is already open — detect immediately
+    process.stdout.write(` ${C.green('found!')}\n`);
     detectedProc = alreadyRunning;
   } else {
-    // App belum buka — minta user buka dulu
+    // App is not open — ask user to open it
     process.stdout.write('\n');
     console.log('');
-    console.log(`  ${C.cyan.bold('Buka app')} ${C.white.bold('"' + appQuery + '"')} ${C.cyan.bold('sekarang...')}`);
-    console.log(`  ${C.dim('BlockCLI akan otomatis mendeteksi prosesnya.')}`);
-    console.log(`  ${C.dim('Ctrl+C untuk batal.')}\n`);
+    console.log(`  ${C.cyan.bold('Open')} ${C.white.bold('"' + appQuery + '"')} ${C.cyan.bold('now...')}`);
+    console.log(`  ${C.dim('BlockCLI will automatically detect the process.')}`);
+    console.log(`  ${C.dim('Press Ctrl+C to cancel.')}\n`);
 
-    const stopSpinner = startSpinner(C.dim('Menunggu app dibuka...'));
+    const stopSpinner = startSpinner(C.dim('Waiting for app to launch...'));
 
     try {
       detectedProc = await watchForNewProcess(appQuery, 60000);
@@ -265,11 +265,11 @@ async function startBlock(appQuery, timeStr) {
       stopSpinner();
       if (err.message === 'TIMEOUT') {
         printError(
-          `Timeout: app "${appQuery}" tidak terdeteksi dalam 60 detik.\n\n` +
-          `  Pastikan nama app benar dan coba lagi.`
+          `Timeout: "${appQuery}" was not detected within 60 seconds.\n\n` +
+          `  Make sure the app name is correct and try again.`
         );
       } else {
-        console.log(`\n  ${C.dim('Dibatalkan.')}\n`);
+        console.log(`\n  ${C.dim('Cancelled.')}\n`);
       }
       process.exit(1);
     }
@@ -278,7 +278,7 @@ async function startBlock(appQuery, timeStr) {
   // 5. Confirm with user
   const confirmed = await confirmProcess(detectedProc);
   if (!confirmed) {
-    console.log(`\n  ${C.dim('Dibatalkan.')}\n`);
+    console.log(`\n  ${C.dim('Cancelled.')}\n`);
     process.exit(0);
   }
 

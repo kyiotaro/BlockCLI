@@ -1,15 +1,15 @@
 // src/daemon.js
 // Background blocker daemon
-// Strategy:
-//   1. Registry DisallowRun  — blocks app from opening normally
-//   2. WMI process watcher   — event-based kill if app bypasses registry
-//   No polling loop needed.
+// Strategy (3 layers):
+//   1. Rename .exe → .exe.blocked  — file doesn't exist, can't launch at all
+//   2. Registry DisallowRun        — fallback if rename fails (no admin on exe dir)
+//   3. WMI process watcher         — kill anything that still slips through
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execSync, spawn } = require('child_process');
-const { loadSession, clearSession, saveSession } = require('./session');
+const { loadSession, clearSession } = require('./session');
 const { getRemainingSeconds } = require('./time');
 
 const LOG_FILE = path.join(os.homedir(), '.blockcli', 'daemon.log');
@@ -18,13 +18,45 @@ function log(msg) {
   try { fs.appendFileSync(LOG_FILE, `[${new Date().toISOString()}] ${msg}\n`); } catch {}
 }
 
-// ─── REGISTRY BLOCK ───────────────────────────────────────────────────────────
+// ─── LAYER 1: EXE RENAME ──────────────────────────────────────────────────────
+
+/**
+ * Rename app.exe → app.exe.blocked so it cannot be launched at all.
+ * Returns the blocked path if successful, null otherwise.
+ */
+function renameToBlocked(exePath) {
+  if (!exePath || !fs.existsSync(exePath)) return null;
+  const blockedPath = exePath + '.blocked';
+  try {
+    fs.renameSync(exePath, blockedPath);
+    log(`Renamed: ${exePath} → ${blockedPath}`);
+    return blockedPath;
+  } catch (e) {
+    log(`Rename failed (${exePath}): ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Restore app.exe.blocked → app.exe
+ */
+function restoreFromBlocked(blockedPath) {
+  if (!blockedPath || !fs.existsSync(blockedPath)) return;
+  const exePath = blockedPath.replace(/\.blocked$/, '');
+  try {
+    fs.renameSync(blockedPath, exePath);
+    log(`Restored: ${blockedPath} → ${exePath}`);
+  } catch (e) {
+    log(`Restore failed (${blockedPath}): ${e.message}`);
+  }
+}
+
+// ─── LAYER 2: REGISTRY DISALLOWRUN ───────────────────────────────────────────
 
 const REG_PATH = 'HKCU:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\Explorer';
 
 function addRegistryBlock(apps) {
   try {
-    // Ensure Explorer key and DisallowRun DWORD = 1 exist
     execSync(`powershell -NoProfile -Command "
       $p = '${REG_PATH}'
       if (!(Test-Path $p)) { New-Item -Path $p -Force | Out-Null }
@@ -33,7 +65,6 @@ function addRegistryBlock(apps) {
       if (!(Test-Path $dp)) { New-Item -Path $dp -Force | Out-Null }
     "`, { timeout: 8000 });
 
-    // Add each app exe as a numbered string value
     apps.forEach((app, i) => {
       const exeName = app.processName.endsWith('.exe')
         ? app.processName
@@ -61,10 +92,9 @@ function removeRegistryBlock() {
   }
 }
 
-// ─── WMI PROCESS WATCHER ──────────────────────────────────────────────────────
+// ─── LAYER 3: WMI PROCESS WATCHER ────────────────────────────────────────────
 
 function buildWmiWatcher(apps) {
-  // Build PowerShell condition for each app
   const conditions = apps.map(app => {
     const exeName = (app.processName.endsWith('.exe')
       ? app.processName
@@ -72,8 +102,7 @@ function buildWmiWatcher(apps) {
     return `$e.NewEvent.TargetInstance.Name.ToLower() -eq '${exeName}'`;
   }).join(' -or ');
 
-  // PowerShell script: watch for process creation, kill if it's a blocked app
-  const ps = `
+  return `
 $watcher = New-Object System.Management.ManagementEventWatcher
 $watcher.Query = New-Object System.Management.WqlEventQuery(
   "__InstanceCreationEvent",
@@ -101,7 +130,6 @@ while ($true) {
   }
 }
 `;
-  return ps;
 }
 
 function startWmiWatcher(apps, onKill) {
@@ -118,12 +146,11 @@ function startWmiWatcher(apps, onKill) {
   });
 
   proc.stdout.on('data', data => {
-    const lines = data.toString().trim().split('\n');
-    lines.forEach(line => {
+    data.toString().trim().split('\n').forEach(line => {
       line = line.trim();
       if (line.startsWith('KILLED:')) {
         const [, name, pid] = line.split(':');
-        log(`WMI watcher killed: ${name} (PID ${pid})`);
+        log(`WMI killed: ${name} (PID ${pid})`);
         if (onKill) onKill(name);
       } else if (line === 'WATCHER_READY') {
         log('WMI watcher ready');
@@ -133,22 +160,32 @@ function startWmiWatcher(apps, onKill) {
     });
   });
 
-  proc.stderr.on('data', data => {
-    log(`WMI stderr: ${data.toString().trim()}`);
-  });
-
-  proc.on('exit', code => {
-    log(`WMI watcher exited (code ${code})`);
-  });
+  proc.stderr.on('data', data => log(`WMI stderr: ${data.toString().trim()}`));
+  proc.on('exit', code => log(`WMI watcher exited (code ${code})`));
 
   return proc;
 }
 
+// ─── KILL RUNNING INSTANCES ───────────────────────────────────────────────────
+
+function killRunningInstances(apps) {
+  apps.forEach(app => {
+    try {
+      execSync(`taskkill /f /im "${app.processName}.exe" 2>nul`, { timeout: 3000 });
+      log(`Killed running: ${app.processName}`);
+    } catch {}
+    // Also try without .exe suffix in case processName already has it
+    try {
+      execSync(`taskkill /f /im "${app.processName}" 2>nul`, { timeout: 3000 });
+    } catch {}
+  });
+}
+
 // ─── SESSION TIMER ────────────────────────────────────────────────────────────
 
-function waitForExpiry(session, watcherProc) {
+function waitForExpiry(session, watcherProc, blockedPaths) {
   const remaining = getRemainingSeconds(session.endTime);
-  log(`Session will expire in ${remaining}s`);
+  log(`Session expires in ${remaining}s`);
 
   setTimeout(() => {
     log('Session expired — cleaning up');
@@ -156,10 +193,13 @@ function waitForExpiry(session, watcherProc) {
     // Kill watcher
     try { watcherProc.kill(); } catch {}
 
-    // Remove registry block
+    // Layer 1: Restore renamed exes
+    blockedPaths.forEach(p => restoreFromBlocked(p));
+
+    // Layer 2: Remove registry block
     removeRegistryBlock();
 
-    // Clear session
+    // Clear session file
     clearSession();
 
     log('All blocks removed. Session ended.');
@@ -186,24 +226,36 @@ function runDaemon() {
     process.exit(0);
   }
 
-  // 1. Kill any already-running instances of blocked apps
+  // Step 1: Kill any already-running instances
+  killRunningInstances(session.apps);
+
+  // Step 2: Layer 1 — rename exe to .blocked
+  const blockedPaths = [];
   session.apps.forEach(app => {
-    try {
-      execSync(`taskkill /f /im "${app.processName}.exe" 2>nul`, { timeout: 3000 });
-      log(`Killed existing: ${app.processName}`);
-    } catch {}
+    const exePath = app.exePath;
+    if (exePath) {
+      const blockedPath = renameToBlocked(exePath);
+      if (blockedPath) {
+        blockedPaths.push(blockedPath);
+        log(`Layer 1 active: ${app.processName} exe renamed`);
+      } else {
+        log(`Layer 1 skipped for ${app.processName}: rename failed, falling back`);
+      }
+    } else {
+      log(`Layer 1 skipped for ${app.processName}: no exePath in session`);
+    }
   });
 
-  // 2. Add registry block (prevents normal launch)
+  // Step 3: Layer 2 — registry DisallowRun (backup)
   addRegistryBlock(session.apps);
 
-  // 3. Start WMI watcher (event-based kill for bypass attempts)
-  const watcher = startWmiWatcher(session.apps, (name) => {
-    log(`Bypass attempt blocked: ${name}`);
+  // Step 4: Layer 3 — WMI watcher (catch anything that slips through)
+  const watcher = startWmiWatcher(session.apps, name => {
+    log(`Bypass attempt killed: ${name}`);
   });
 
-  // 4. Set timer to clean up when session expires
-  waitForExpiry(session, watcher);
+  // Step 5: Wait for session to expire, then clean up
+  waitForExpiry(session, watcher, blockedPaths);
 }
 
 runDaemon();

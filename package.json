@@ -1,6 +1,6 @@
 {
   "name": "blockcli",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Block distracting apps while you study. No escape until the timer runs out.",
   "main": "src/index.js",
   "bin": {
