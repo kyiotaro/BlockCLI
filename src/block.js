@@ -46,6 +46,23 @@ function getProcessSnapshot() {
 }
 
 /**
+ * Check if any already-running process matches the query.
+ * Returns the best match process info, or null.
+ */
+function findAlreadyRunning(query) {
+  const snapshot = getProcessSnapshot();
+  const scored = [];
+  for (const name of snapshot) {
+    const score = matchScore(query, name);
+    if (score >= 0.6) scored.push({ name, score });
+  }
+  if (scored.length === 0) return null;
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  return getProcessInfo(best.name);
+}
+
+/**
  * Get full process info for a given process name (exe path, pid)
  */
 function getProcessInfo(processName) {
@@ -220,30 +237,42 @@ async function startBlock(appQuery, timeStr) {
     process.exit(1);
   }
 
-  // 3. Prompt user to open the app
+  // 3. Cek apakah app sudah running sebelum command dijalankan
   console.log('');
-  console.log(`  ${C.cyan.bold('Buka app')} ${C.white.bold('"' + appQuery + '"')} ${C.cyan.bold('sekarang...')}`);
-  console.log(`  ${C.dim('BlockCLI akan otomatis mendeteksi prosesnya.')}`);
-  console.log(`  ${C.dim('Ctrl+C untuk batal.')}\n`);
-
-  // 4. Watch for the process to appear
-  const stopSpinner = startSpinner(C.dim('Menunggu app dibuka...'));
+  process.stdout.write(`  ${C.dim('Mencari proses yang cocok...')}`);
+  const alreadyRunning = findAlreadyRunning(appQuery);
 
   let detectedProc;
-  try {
-    detectedProc = await watchForNewProcess(appQuery, 60000);
-    stopSpinner();
-  } catch (err) {
-    stopSpinner();
-    if (err.message === 'TIMEOUT') {
-      printError(
-        `Timeout: app "${appQuery}" tidak terdeteksi dalam 60 detik.\n\n` +
-        `  Pastikan nama app benar dan coba lagi.`
-      );
-    } else {
-      console.log(`\n  ${C.dim('Dibatalkan.')}\n`);
+
+  if (alreadyRunning) {
+    // App sudah buka — langsung deteksi
+    process.stdout.write(` ${C.green('ditemukan!')}\n`);
+    detectedProc = alreadyRunning;
+  } else {
+    // App belum buka — minta user buka dulu
+    process.stdout.write('\n');
+    console.log('');
+    console.log(`  ${C.cyan.bold('Buka app')} ${C.white.bold('"' + appQuery + '"')} ${C.cyan.bold('sekarang...')}`);
+    console.log(`  ${C.dim('BlockCLI akan otomatis mendeteksi prosesnya.')}`);
+    console.log(`  ${C.dim('Ctrl+C untuk batal.')}\n`);
+
+    const stopSpinner = startSpinner(C.dim('Menunggu app dibuka...'));
+
+    try {
+      detectedProc = await watchForNewProcess(appQuery, 60000);
+      stopSpinner();
+    } catch (err) {
+      stopSpinner();
+      if (err.message === 'TIMEOUT') {
+        printError(
+          `Timeout: app "${appQuery}" tidak terdeteksi dalam 60 detik.\n\n` +
+          `  Pastikan nama app benar dan coba lagi.`
+        );
+      } else {
+        console.log(`\n  ${C.dim('Dibatalkan.')}\n`);
+      }
+      process.exit(1);
     }
-    process.exit(1);
   }
 
   // 5. Confirm with user
